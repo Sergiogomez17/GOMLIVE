@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="neon">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GOMLIVE · Moderador</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body data-role="host" data-tab="people">
+  <div class="app">
+    <!-- ENCABEZADO -->
+    <header class="topbar panel">
+      <a class="brand" href="/emisor" aria-label="NEXA LIVE">
+        <span class="brand-mark"><svg class="i"><use href="#i-play" /></svg></span>
+        <span class="brand-name">GOM <span>LIVE</span></span>
+      </a>
+      <span class="topbar-divider" aria-hidden="true"></span>
+
+      <div class="room">
+        <button class="room-btn" id="roomBtn" aria-haspopup="true" aria-expanded="false">
+          <svg class="i"><use href="#i-users" /></svg>
+          <span class="room-text">
+            <strong>Sala General</strong>
+            <small><span id="participantCount">0</span> participantes</small>
+          </span>
+          <svg class="i i-sm"><use href="#i-chevron-down" /></svg>
+        </button>
+      </div>
+
+      <span class="live-badge" id="liveBadge">OFFLINE</span>
+      <button id="stopBtn" class="pill-btn pill-danger" disabled>
+        <svg class="i i-sm"><use href="#i-stop" /></svg> Detener
+      </button>
+
+      <div class="topbar-right">
+        <div class="icon-group">
+          <button class="icon-btn" data-action="glow" data-tip="Efectos neón" aria-label="Activar o desactivar efectos neón"><svg class="i"><use href="#i-sun" /></svg></button>
+          <button class="icon-btn" data-action="theme" data-tip="Cambiar tema" aria-label="Cambiar tema"><svg class="i"><use href="#i-palette" /></svg></button>
+        </div>
+        <label class="theme-select">
+          <span class="sr-only">Tema</span>
+          <select id="themeSelect"></select>
+          <svg class="i i-sm"><use href="#i-chevron-down" /></svg>
+        </label>
+        <div class="profile">
+          <span class="avatar" id="meAvatar">?</span>
+          <span class="profile-text">
+            <strong id="meName">—</strong>
+            <small id="netState" class="net-state">Conectando…</small>
+          </span>
+        </div>
+      </div>
+    </header>
+
+    <!-- PESTAÑAS MÓVIL -->
+    <div class="mtabs" role="tablist">
+      <button class="mtab" data-tab-btn="people" role="tab"><svg class="i i-sm"><use href="#i-users" /></svg> Participantes</button>
+      <button class="mtab" data-tab-btn="chat" role="tab"><svg class="i i-sm"><use href="#i-message" /></svg> Chat <span class="unread" id="unreadBadge" hidden>0</span></button>
+    </div>
+
+    <main class="layout">
+      <!-- COLUMNA IZQUIERDA: YO + PARTICIPANTES -->
+      <aside class="people panel" aria-label="Participantes">
+        <div class="tile tile-me" id="meTile">
+          <video id="localVideo" class="mirror" autoplay muted playsinline></video>
+          <div class="tile-ph">
+            <span class="avatar avatar-xl" id="meTileAvatar">?</span>
+            <small>Cámara apagada</small>
+          </div>
+          <span class="tile-label"><span class="dot"></span> Yo</span>
+          <span class="tile-badges">
+            <span class="tile-ic" data-state-of="mic"><svg class="i ic-on"><use href="#i-mic" /></svg><svg class="i ic-off"><use href="#i-mic-off" /></svg></span>
+            <span class="tile-ic" data-state-of="cam"><svg class="i ic-on"><use href="#i-video" /></svg><svg class="i ic-off"><use href="#i-video-off" /></svg></span>
+          </span>
+        </div>
+
+        <div class="people-head">
+          <span>Espectadores</span>
+          <span class="count-chip" id="peopleCount">0</span>
+        </div>
+        <div class="people-grid" id="peopleGrid"></div>
+        <button class="more-btn" id="moreBtn" hidden></button>
+      </aside>
+
+      <!-- COLUMNA CENTRAL: MODERADOR -->
+      <section class="stage" id="stage" aria-label="Transmisión del moderador">
+        <video id="stageVideo" autoplay muted playsinline></video>
+
+        <div class="stage-empty">
+          <div class="stage-empty-ic"><svg class="i"><use href="#i-broadcast" /></svg></div>
+          <h2>Listo para transmitir</h2>
+          <p>Tu cámara y micrófono se enviarán a todos los espectadores conectados a la sala.</p>
+          <button id="startBtn" class="cta">
+            <svg class="i"><use href="#i-broadcast" /></svg> Iniciar transmisión
+          </button>
+        </div>
+
+        <div class="stage-top">
+          <div id="status" class="status-pill">Presiona "Iniciar transmisión" para comenzar.</div>
+          <span class="glass-pill" data-tip="Espectadores conectados"><svg class="i i-sm"><use href="#i-eye" /></svg> <span id="viewerCount">0</span></span>
+        </div>
+
+        <div class="stage-bottom">
+          <div class="mod-tag">
+            <svg class="i crown"><use href="#i-crown" /></svg>
+            <span><strong>Moderador</strong><small id="hostName">—</small></span>
+          </div>
+          <div class="stage-ctrls">
+            <button class="round-btn" data-action="mic" data-tip="Micrófono" aria-label="Micrófono"><svg class="i ic-on"><use href="#i-mic" /></svg><svg class="i ic-off"><use href="#i-mic-off" /></svg></button>
+            <button class="round-btn" data-action="cam" data-tip="Cámara" aria-label="Cámara"><svg class="i ic-on"><use href="#i-video" /></svg><svg class="i ic-off"><use href="#i-video-off" /></svg></button>
+            <button class="round-btn" data-action="fullscreen" data-tip="Pantalla completa" aria-label="Pantalla completa"><svg class="i"><use href="#i-maximize" /></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- COLUMNA DERECHA: CHAT -->
+      <aside class="chat panel" id="chatPanel" aria-label="Chat en vivo">
+        <header class="chat-head">
+          <span class="chat-head-ic"><svg class="i"><use href="#i-message" /></svg></span>
+          <h2>Chat en vivo</h2>
+          <span class="glass-pill" data-tip="Personas en la sala"><svg class="i i-sm"><use href="#i-users" /></svg> <span id="chatCount">0</span></span>
+        </header>
+        <ul class="chat-list" id="chatList" aria-live="polite"></ul>
+        <form class="chat-form" id="chatForm" autocomplete="off">
+          <div class="chat-input">
+            <input id="chatInput" type="text" maxlength="300" placeholder="Escribe un mensaje..." aria-label="Escribe un mensaje" />
+            <button type="button" class="chat-emoji" data-action="emoji" aria-label="Emojis"><svg class="i"><use href="#i-smile" /></svg></button>
+          </div>
+          <button type="submit" class="send-btn" aria-label="Enviar mensaje"><svg class="i"><use href="#i-send" /></svg></button>
+        </form>
+      </aside>
+    </main>
+
+    <!-- BARRA INFERIOR DE CONTROLES -->
+    <nav class="dock" aria-label="Controles">
+      <div class="dock-group">
+        <button class="dock-btn" data-action="mic" data-tone="a" data-tip="Activar / silenciar micrófono">
+          <span class="dock-ic"><svg class="i ic-on"><use href="#i-mic" /></svg><svg class="i ic-off"><use href="#i-mic-off" /></svg></span>
+          <span class="dock-label">Micrófono</span>
+        </button>
+        <button class="dock-btn" data-action="cam" data-tone="b" data-tip="Encender / apagar cámara">
+          <span class="dock-ic"><svg class="i ic-on"><use href="#i-video" /></svg><svg class="i ic-off"><use href="#i-video-off" /></svg></span>
+          <span class="dock-label">Cámara</span>
+        </button>
+        <button class="dock-btn" data-action="emoji" data-tone="blue" data-tip="Insertar emojis en el chat">
+          <span class="dock-ic"><svg class="i"><use href="#i-smile" /></svg></span>
+          <span class="dock-label">Emojis</span>
+        </button>
+        <button class="dock-btn" data-action="settings" data-tone="blue" data-tip="Ajustes">
+          <span class="dock-ic"><svg class="i"><use href="#i-settings" /></svg></span>
+          <span class="dock-label">Ajustes</span>
+        </button>
+        <button class="dock-btn" data-action="theme" data-tone="c" data-tip="Cambiar tema">
+          <span class="dock-ic"><svg class="i"><use href="#i-palette" /></svg></span>
+          <span class="dock-label">Tema</span>
+        </button>
+      </div>
+      <span class="dock-sep" aria-hidden="true"></span>
+      <button class="share-btn" data-action="share" data-tip="Compartir tu pantalla con los espectadores">
+        <svg class="i"><use href="#i-share" /></svg>
+        <span class="share-label">Compartir pantalla</span>
+        <span class="share-short" aria-hidden="true">Compartir</span>
+      </button>
+    </nav>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="/firebase-config.js"></script>
+  <script src="/nexa-ui.js"></script>
+  <script src="/emisor/emisor.js"></script>
+</body>
+</html>
