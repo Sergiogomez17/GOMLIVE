@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const attachChat = require('./chat-server');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,8 +15,12 @@ app.get('/receptor', (req, res) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
   console.log(`  Emisor:   http://localhost:${PORT}/emisor`);
   console.log(`  Receptor: http://localhost:${PORT}/receptor`);
+  console.log(`  Chat:     ws://localhost:${PORT}/chat`);
 });
+
+// El chat usa WebSocket sobre el mismo puerto que la página
+attachChat(server);
