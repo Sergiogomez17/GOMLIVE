@@ -13,9 +13,9 @@
   <div class="app">
     <!-- ENCABEZADO -->
     <header class="topbar panel">
-      <a class="brand" href="/emisor" aria-label="NEXA LIVE">
+      <a class="brand" href="/emisor" aria-label="GOMLIVE">
         <span class="brand-mark"><svg class="i"><use href="#i-play" /></svg></span>
-        <span class="brand-name">GOM <span>LIVE</span></span>
+        <span class="brand-name">GOM<span>LIVE</span></span>
       </a>
       <span class="topbar-divider" aria-hidden="true"></span>
 
@@ -89,6 +89,9 @@
       <section class="stage" id="stage" aria-label="Transmisión del moderador">
         <video id="stageVideo" autoplay muted playsinline></video>
 
+        <!-- Reacciones en vivo: flotan sobre el video (también en pantalla completa) -->
+        <div class="reactions-layer" id="reactionsLayer" aria-hidden="true"></div>
+
         <div class="stage-empty">
           <div class="stage-empty-ic"><svg class="i"><use href="#i-broadcast" /></svg></div>
           <h2>Listo para transmitir</h2>
@@ -100,6 +103,7 @@
 
         <div class="stage-top">
           <div id="status" class="status-pill">Presiona "Iniciar transmisión" para comenzar.</div>
+          <span class="glass-pill screen-pill" id="screenPill" hidden><svg class="i i-sm"><use href="#i-share" /></svg> Pantalla compartida</span>
           <span class="glass-pill" data-tip="Espectadores conectados"><svg class="i i-sm"><use href="#i-eye" /></svg> <span id="viewerCount">0</span></span>
         </div>
 
@@ -145,7 +149,7 @@
           <span class="dock-ic"><svg class="i ic-on"><use href="#i-video" /></svg><svg class="i ic-off"><use href="#i-video-off" /></svg></span>
           <span class="dock-label">Cámara</span>
         </button>
-        <button class="dock-btn" data-action="emoji" data-tone="blue" data-tip="Insertar emojis en el chat">
+        <button class="dock-btn" data-action="emoji" data-tone="blue" data-tip="Reacciones en vivo y emojis para el chat">
           <span class="dock-ic"><svg class="i"><use href="#i-smile" /></svg></span>
           <span class="dock-label">Emojis</span>
         </button>
@@ -170,7 +174,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
   <script src="/firebase-config.js"></script>
-  <script src="/nexa-ui.js"></script>
+  <script src="/gomlive-ui.js"></script>
   <script src="/emisor/emisor.js"></script>
 </body>
 </html>

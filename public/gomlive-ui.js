@@ -1,8 +1,9 @@
-// NEXA LIVE — capa de interfaz compartida por el emisor y el receptor.
-// Maneja temas, chat, lista de participantes, ajustes y estados visuales.
-// No toca la señalización WebRTC: de Firebase solo usa rooms/main/host y lee
-// la lista de espectadores (viewers). El chat va por WebSocket (chat-server.js).
-const NexaUI = (() => {
+// GOMLIVE — capa de interfaz compartida por el emisor y el receptor.
+// Maneja temas, chat, reacciones, lista de participantes, ajustes y estados visuales.
+// No toca la señalización WebRTC: de Firebase solo lee host (nombre y si comparte
+// pantalla), active y la lista de espectadores (viewers). El chat y las reacciones
+// van por WebSocket (chat-server.js).
+const GomliveUI = (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
@@ -44,6 +45,12 @@ const NexaUI = (() => {
   const EMOJIS = ['👋', '😀', '😂', '😍', '🤩', '😮', '👏', '🙌', '🔥', '💯', '🎉', '👍', '💙', '💚', '🚀', '🎮'];
   const MAX_TILES = 6; // Espectadores visibles antes de "+N participantes"
 
+  // Reacciones en vivo: la misma lista blanca que valida chat-server.js
+  const REACTIONS = ['❤️', '👍', '😂', '😮', '🔥'];
+  const REACTION_LIMIT = 5;      // reacciones permitidas...
+  const REACTION_WINDOW = 2000;  // ...cada 2 segundos (el servidor aplica el mismo límite)
+  const MAX_FLOATING = 30;       // reacciones animándose a la vez sobre el video
+
   // localStorage puede no estar disponible (modo privado, etc.)
   const storage = {
     get(key, fallback) {
@@ -57,10 +64,10 @@ const NexaUI = (() => {
   // Identificador por pestaña: distingue mis mensajes aunque haya varias pestañas abiertas.
   const clientId = (() => {
     try {
-      let id = sessionStorage.getItem('nexa.clientId');
+      let id = sessionStorage.getItem('gomlive.clientId');
       if (!id) {
         id = Math.random().toString(36).slice(2, 10);
-        sessionStorage.setItem('nexa.clientId', id);
+        sessionStorage.setItem('gomlive.clientId', id);
       }
       return id;
     } catch {
@@ -76,6 +83,9 @@ const NexaUI = (() => {
   let selfViewerId = null;
   let peopleExpanded = false;
   let unread = 0;
+  let chatSocket = null;            // WebSocket compartido por el chat y las reacciones
+  const seenReactions = new Set();  // ids ya dibujados: evita duplicados
+  const sentReactions = [];         // horas de mis últimas reacciones (límite local)
   const participants = new Map(); // viewerId -> { name, state }
 
   // ---------- Utilidades ----------
@@ -141,6 +151,10 @@ const NexaUI = (() => {
       </div>
 
       <div class="popover emoji-pop" id="emojiPop" hidden>
+        <p class="popover-title">Reaccionar en vivo</p>
+        <div class="reaction-row">
+          ${REACTIONS.map((e) => `<button type="button" class="reaction-btn" data-reaction="${e}" aria-label="Reaccionar con ${e}">${e}</button>`).join('')}
+        </div>
         <p class="popover-title">Emojis para el chat</p>
         <div class="emoji-grid">
           ${EMOJIS.map((e) => `<button type="button" class="emoji-btn" data-emoji="${e}">${e}</button>`).join('')}
@@ -224,7 +238,7 @@ const NexaUI = (() => {
   function applyTheme(id) {
     const theme = THEMES.find((t) => t.id === id) || THEMES[0];
     document.documentElement.dataset.theme = theme.id;
-    storage.set('nexa.theme', theme.id);
+    storage.set('gomlive.theme', theme.id);
     $$('#themeSelect, #themeSelectDialog').forEach((sel) => { sel.value = theme.id; });
   }
 
@@ -238,7 +252,7 @@ const NexaUI = (() => {
 
   function applyGlow(on) {
     document.documentElement.dataset.glow = on ? 'on' : 'off';
-    storage.set('nexa.glow', on ? 'on' : 'off');
+    storage.set('gomlive.glow', on ? 'on' : 'off');
     $$('[data-action="glow"]').forEach((b) => b.setAttribute('aria-pressed', String(on)));
     const input = $('#glowInput');
     if (input) input.checked = on;
@@ -250,8 +264,8 @@ const NexaUI = (() => {
       sel.innerHTML = options;
     });
     $('#themeSelect').addEventListener('change', (e) => applyTheme(e.target.value));
-    applyTheme(storage.get('nexa.theme', 'neon'));
-    applyGlow(storage.get('nexa.glow', 'on') === 'on');
+    applyTheme(storage.get('gomlive.theme', 'neon'));
+    applyGlow(storage.get('gomlive.glow', 'on') === 'on');
   }
 
   // ---------- Nombre / perfil ----------
@@ -261,7 +275,7 @@ const NexaUI = (() => {
 
   function setName(name) {
     myName = name.trim().slice(0, 24) || myName;
-    storage.set('nexa.name.' + role, myName);
+    storage.set('gomlive.name.' + role, myName);
     $('#meName').textContent = myName;
     paintAvatar($('#meAvatar'), myName);
     paintAvatar($('#meTileAvatar'), myName);
@@ -271,7 +285,7 @@ const NexaUI = (() => {
     const fallback = role === 'host'
       ? 'Moderador'
       : 'Invitado ' + Math.floor(1000 + Math.random() * 9000);
-    setName(storage.get('nexa.name.' + role, fallback));
+    setName(storage.get('gomlive.name.' + role, fallback));
   }
 
   // ---------- Ajustes ----------
@@ -363,6 +377,12 @@ const NexaUI = (() => {
     $('#meTile').classList.toggle('has-video', !!active);
   }
 
+  // Etiqueta "Pantalla compartida" sobre el video (moderador y espectadores)
+  function setScreenSharing(sharing) {
+    $('#screenPill').hidden = !sharing;
+    $('#stage').classList.toggle('is-screen', !!sharing);
+  }
+
   // ---------- Estado de la sala ----------
   function setLive(live) {
     isLive = live;
@@ -389,6 +409,8 @@ const NexaUI = (() => {
     room.child('host/name').on('value', (snap) => {
       $('#hostName').textContent = snap.val() || (role === 'host' ? myName : 'Sin moderador');
     });
+    // El emisor publica aquí si está compartiendo pantalla; se borra solo al terminar la transmisión
+    room.child('host/sharing').on('value', (snap) => setScreenSharing(snap.val() === true));
 
     // Estado real de la conexión con Firebase
     db.ref('.info/connected').on('value', (snap) => {
@@ -596,6 +618,54 @@ const NexaUI = (() => {
     $('.send-btn').disabled = !online;
   }
 
+  // ---------- Reacciones en vivo (mismo WebSocket del chat, tipo 'reaction') ----------
+  function sendReaction(emoji) {
+    if (!REACTIONS.includes(emoji)) return;
+    if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+      toast('Las reacciones se están reconectando. Intenta en unos segundos.', 'warn');
+      return;
+    }
+    // Límite local: evita enviar de más (el servidor lo vuelve a comprobar)
+    const now = Date.now();
+    while (sentReactions.length && now - sentReactions[0] > REACTION_WINDOW) sentReactions.shift();
+    if (sentReactions.length >= REACTION_LIMIT) {
+      toast('Vas muy rápido: espera un momento para reaccionar de nuevo.', 'warn');
+      return;
+    }
+    sentReactions.push(now);
+    // No se dibuja aquí: se dibuja cuando el servidor la devuelve, así aparece una sola vez
+    chatSocket.send(JSON.stringify({ type: 'reaction', emoji, uid: clientId, name: myName }));
+  }
+
+  // Hace flotar la reacción sobre el video central
+  function showReaction(r) {
+    if (!r || !REACTIONS.includes(r.emoji) || seenReactions.has(r.id)) return;
+    seenReactions.add(r.id);
+    if (seenReactions.size > 200) seenReactions.delete(seenReactions.values().next().value);
+
+    const layer = $('#reactionsLayer');
+    while (layer.childElementCount >= MAX_FLOATING) layer.firstElementChild.remove();
+
+    const el = document.createElement('div');
+    el.className = 'reaction' + (r.uid === clientId ? ' is-own' : '');
+    // Posición y recorrido variables para que no se encimen
+    el.style.setProperty('--x', (8 + Math.random() * 78).toFixed(1) + '%');
+    el.style.setProperty('--drift', Math.round(Math.random() * 60 - 30) + 'px');
+    el.style.setProperty('--rise', -Math.round($('#stage').clientHeight * 0.6) + 'px');
+
+    const emoji = document.createElement('span');
+    emoji.className = 'reaction-emoji';
+    emoji.textContent = r.emoji;
+    const name = document.createElement('span');
+    name.className = 'reaction-name';
+    name.textContent = r.name || 'Anónimo';
+
+    el.append(emoji, name);
+    // Se elimina sola al terminar la animación: no se acumulan elementos
+    el.addEventListener('animationend', () => el.remove());
+    layer.appendChild(el);
+  }
+
   function initChat() {
     const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/chat';
     let socket = null;
@@ -603,6 +673,7 @@ const NexaUI = (() => {
 
     function connectChat() {
       socket = new WebSocket(url);
+      chatSocket = socket;
 
       socket.addEventListener('open', () => {
         retryDelay = 1000;
@@ -623,6 +694,10 @@ const NexaUI = (() => {
           // Solo los mensajes que llegan en vivo (no el historial) iluminan el panel.
           flashChat();
           if (!chatVisible()) setUnread(unread + 1);
+        } else if (data.type === 'reaction') {
+          showReaction(data.reaction);
+        } else if (data.type === 'reaction-limit') {
+          toast('Vas muy rápido: espera un momento para reaccionar de nuevo.', 'warn');
         }
       });
 
@@ -658,8 +733,13 @@ const NexaUI = (() => {
       input.focus();
     });
 
-    // Emojis: se insertan en la caja de texto del chat (no se envían solos).
+    // Reacciones: se envían al instante. Emojis: se insertan en la caja de texto del chat.
     $('#emojiPop').addEventListener('click', (e) => {
+      const reactionBtn = e.target.closest('[data-reaction]');
+      if (reactionBtn) {
+        sendReaction(reactionBtn.dataset.reaction);
+        return;
+      }
       const btn = e.target.closest('[data-emoji]');
       if (!btn) return;
       const pos = input.selectionStart ?? input.value.length;
@@ -742,6 +822,7 @@ const NexaUI = (() => {
     getName,
     setControl,
     setStageActive,
+    setScreenSharing,
     setSelfVideo,
     setSelfViewer,
     setParticipantState,

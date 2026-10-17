@@ -1,7 +1,7 @@
 {
-  "name": "webrtc-firebase-demo",
+  "name": "gomlive",
   "version": "1.0.0",
-  "description": "Emisor/Receptor de video y audio por WebRTC usando Firebase Realtime Database como servidor de señalización",
+  "description": "GOMLIVE: streaming en vivo 1:N con WebRTC (señalización por Firebase Realtime Database), chat y reacciones por WebSocket",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

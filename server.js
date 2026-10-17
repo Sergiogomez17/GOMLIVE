@@ -19,8 +19,8 @@ const server = app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
   console.log(`  Emisor:   http://localhost:${PORT}/emisor`);
   console.log(`  Receptor: http://localhost:${PORT}/receptor`);
-  console.log(`  Chat:     ws://localhost:${PORT}/chat`);
+  console.log(`  Chat y reacciones: ws://localhost:${PORT}/chat`);
 });
 
-// El chat usa WebSocket sobre el mismo puerto que la página
+// El chat y las reacciones usan WebSocket sobre el mismo puerto que la página
 attachChat(server);

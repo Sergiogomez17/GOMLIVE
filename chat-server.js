@@ -1,6 +1,7 @@
-// Chat en vivo por WebSocket.
+// Chat y reacciones en vivo por WebSocket.
 // Se monta sobre el mismo servidor HTTP de Express, en la ruta /chat.
-// El video y la señalización WebRTC siguen yendo por Firebase; esto solo maneja el chat.
+// El video y la señalización WebRTC siguen yendo por Firebase; esto solo maneja
+// los mensajes del chat y las reacciones.
 const { WebSocketServer, WebSocket } = require('ws');
 
 const HISTORY_LIMIT = 60;   // mensajes que recibe quien se conecta
@@ -8,10 +9,20 @@ const MAX_TEXT = 300;       // caracteres por mensaje
 const MAX_NAME = 24;
 const PING_INTERVAL = 30000; // ms entre comprobaciones de conexiones caídas
 
+// Reacciones: solo estas se aceptan (la misma lista que muestra gomlive-ui.js)
+const REACTIONS = new Set(['❤️', '👍', '😂', '😮', '🔥']);
+const REACTION_LIMIT = 5;      // reacciones permitidas por conexión...
+const REACTION_WINDOW = 2000;  // ...en esta ventana de tiempo (ms)
+
+function cleanName(name) {
+  return String(name || 'Anónimo').trim().slice(0, MAX_NAME) || 'Anónimo';
+}
+
 function attachChat(server) {
   const wss = new WebSocketServer({ server, path: '/chat', maxPayload: 4096 });
   const history = []; // vive en memoria: se pierde al reiniciar el servidor
   let nextId = 1;
+  let nextReactionId = 1;
 
   function broadcast(payload) {
     const data = JSON.stringify(payload);
@@ -20,11 +31,63 @@ function attachChat(server) {
     }
   }
 
+  function handleMessage(data) {
+    if (typeof data.text !== 'string') return;
+    const text = data.text.trim().slice(0, MAX_TEXT);
+    if (!text) return;
+
+    // El servidor arma el mensaje: valida campos y pone id y hora propios
+    const message = {
+      id: nextId++,
+      uid: String(data.uid || '').slice(0, 16),
+      name: cleanName(data.name),
+      role: data.role === 'host' ? 'host' : 'viewer',
+      text,
+      ts: Date.now()
+    };
+
+    history.push(message);
+    if (history.length > HISTORY_LIMIT) history.shift();
+
+    broadcast({ type: 'message', message });
+  }
+
+  function handleReaction(ws, data) {
+    if (!REACTIONS.has(data.emoji)) return; // fuera de la lista blanca: se descarta
+
+    // Límite por conexión: se guardan las horas de las últimas reacciones
+    const now = Date.now();
+    ws.reactionTimes = ws.reactionTimes.filter((t) => now - t < REACTION_WINDOW);
+    if (ws.reactionTimes.length >= REACTION_LIMIT) {
+      // Solo se avisa a quien se pasó del límite (una vez por ventana); la reacción no se reenvía
+      if (now - ws.lastLimitNotice > REACTION_WINDOW) {
+        ws.lastLimitNotice = now;
+        ws.send(JSON.stringify({ type: 'reaction-limit' }));
+      }
+      return;
+    }
+    ws.reactionTimes.push(now);
+
+    // Las reacciones NO se guardan en el historial: solo se reenvían en vivo
+    broadcast({
+      type: 'reaction',
+      reaction: {
+        id: 'r' + nextReactionId++,
+        emoji: data.emoji,
+        uid: String(data.uid || '').slice(0, 16),
+        name: cleanName(data.name),
+        ts: now
+      }
+    });
+  }
+
   wss.on('connection', (ws) => {
     ws.isAlive = true;
+    ws.reactionTimes = [];
+    ws.lastLimitNotice = 0;
     ws.on('pong', () => { ws.isAlive = true; });
 
-    // Al conectarse, el cliente recibe el historial reciente
+    // Al conectarse, el cliente recibe el historial reciente del chat
     ws.send(JSON.stringify({ type: 'history', messages: history }));
 
     ws.on('message', (raw) => {
@@ -34,25 +97,11 @@ function attachChat(server) {
       } catch {
         return; // se ignora lo que no sea JSON
       }
-      if (data.type !== 'message' || typeof data.text !== 'string') return;
+      if (!data || typeof data !== 'object') return;
 
-      const text = data.text.trim().slice(0, MAX_TEXT);
-      if (!text) return;
-
-      // El servidor arma el mensaje: valida campos y pone id y hora propios
-      const message = {
-        id: nextId++,
-        uid: String(data.uid || '').slice(0, 16),
-        name: String(data.name || 'Anónimo').trim().slice(0, MAX_NAME) || 'Anónimo',
-        role: data.role === 'host' ? 'host' : 'viewer',
-        text,
-        ts: Date.now()
-      };
-
-      history.push(message);
-      if (history.length > HISTORY_LIMIT) history.shift();
-
-      broadcast({ type: 'message', message });
+      if (data.type === 'message') handleMessage(data);
+      else if (data.type === 'reaction') handleReaction(ws, data);
+      // cualquier otro tipo se ignora
     });
   });
 

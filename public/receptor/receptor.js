@@ -29,7 +29,7 @@ async function connect() {
   const activeSnapshot = await roomRef.child('active').once('value');
   if (!activeSnapshot.val()) {
     setStatus('No hay ninguna transmisión activa en este momento. El emisor debe iniciar primero.');
-    NexaUI.toast('No hay ninguna transmisión activa todavía.', 'warn');
+    GomliveUI.toast('No hay ninguna transmisión activa todavía.', 'warn');
     connectBtn.disabled = false;
     return;
   }
@@ -38,7 +38,7 @@ async function connect() {
   viewerRef = roomRef.child('viewers').push();
   // Si el usuario cierra el navegador o se desconecta de red, Firebase limpia automáticamente el nodo
   viewerRef.onDisconnect().remove();
-  NexaUI.setSelfViewer(viewerRef.key);
+  GomliveUI.setSelfViewer(viewerRef.key);
 
   pc = new RTCPeerConnection(RTC_CONFIG);
   pendingCandidates = [];
@@ -47,7 +47,7 @@ async function connect() {
   pc.ontrack = (event) => {
     if (event.streams && event.streams[0]) {
       remoteVideo.srcObject = event.streams[0];
-      NexaUI.setStageActive(true);
+      GomliveUI.setStageActive(true);
       setStatus('Conectado. Recibiendo transmisión en vivo.');
     }
   };
@@ -129,7 +129,7 @@ async function connect() {
 
   // Notificar al emisor que el espectador está listo para recibir la oferta
   // (en una sola escritura, junto con el nombre que se muestra en la lista de participantes)
-  await viewerRef.update({ ready: true, name: NexaUI.getName() });
+  await viewerRef.update({ ready: true, name: GomliveUI.getName() });
 
   disconnectBtn.disabled = false;
 }
@@ -153,8 +153,8 @@ function disconnect() {
   }
 
   remoteVideo.srcObject = null;
-  NexaUI.setStageActive(false);
-  NexaUI.setSelfViewer(null);
+  GomliveUI.setStageActive(false);
+  GomliveUI.setSelfViewer(null);
   connectBtn.disabled = false;
   if (!statusEl.textContent.includes('finalizado')) {
     setStatus('Desconectado.');
@@ -167,11 +167,11 @@ window.addEventListener('beforeunload', () => {
   }
 });
 
-// ---------- Controles de la interfaz NEXA LIVE ----------
+// ---------- Controles de la interfaz GOMLIVE ----------
 
 function toggleRemoteAudio() {
   remoteVideo.muted = !remoteVideo.muted;
-  NexaUI.setControl('volume', { on: !remoteVideo.muted });
+  GomliveUI.setControl('volume', { on: !remoteVideo.muted });
 }
 
 // Vista local de mi cámara: solo se muestra en mi pantalla, no se envía al emisor.
@@ -180,23 +180,23 @@ async function togglePreview() {
     previewStream.getTracks().forEach((track) => track.stop());
     previewStream = null;
     localVideo.srcObject = null;
-    NexaUI.setSelfVideo(false);
-    NexaUI.setControl('cam', { on: false });
+    GomliveUI.setSelfVideo(false);
+    GomliveUI.setControl('cam', { on: false });
     return;
   }
   try {
     previewStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
   } catch (err) {
-    NexaUI.toast('No se pudo acceder a la cámara: ' + err.message, 'error');
+    GomliveUI.toast('No se pudo acceder a la cámara: ' + err.message, 'error');
     return;
   }
   localVideo.srcObject = previewStream;
-  NexaUI.setSelfVideo(true);
-  NexaUI.setControl('cam', { on: true });
-  NexaUI.toast('Vista local de tu cámara (no se transmite).');
+  GomliveUI.setSelfVideo(true);
+  GomliveUI.setControl('cam', { on: true });
+  GomliveUI.toast('Vista local de tu cámara (no se transmite).');
 }
 
-NexaUI.init({
+GomliveUI.init({
   role: 'viewer',
   actions: {
     volume: () => toggleRemoteAudio(),
@@ -206,14 +206,14 @@ NexaUI.init({
     if (viewerRef) viewerRef.child('name').set(name);
   }
 });
-NexaUI.setControl('cam', { on: false });
-NexaUI.setControl('volume', { on: true });
-NexaUI.setControl('mic', {
+GomliveUI.setControl('cam', { on: false });
+GomliveUI.setControl('volume', { on: true });
+GomliveUI.setControl('mic', {
   on: false,
   disabled: true,
   reason: 'Los espectadores solo reciben la transmisión: tu micrófono no se envía.'
 });
-NexaUI.setControl('share', {
+GomliveUI.setControl('share', {
   on: false,
   disabled: true,
   reason: 'Solo el moderador puede compartir pantalla.'

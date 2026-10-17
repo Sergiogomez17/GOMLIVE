@@ -14,7 +14,9 @@ const peers = new Map();
 // desconectar otros listeners de la misma ruta (por ejemplo, los de la interfaz).
 let onViewerAdded = null;
 let onViewerRemoved = null;
-let screenTrack = null; // Pista de pantalla compartida (si está activa)
+let screenStream = null; // Captura de pantalla completa (puede traer más de una pista)
+let screenTrack = null; // Pista de video de la pantalla compartida (si está activa)
+let screenPending = false; // true mientras el selector de pantalla del navegador está abierto
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -45,15 +47,15 @@ async function start() {
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   } catch (err) {
     setStatus('Error al acceder a cámara/micrófono: ' + err.message);
-    NexaUI.toast('No se pudo acceder a cámara/micrófono: ' + err.message, 'error');
+    GomliveUI.toast('No se pudo acceder a cámara/micrófono: ' + err.message, 'error');
     startBtn.disabled = false;
     return;
   }
 
   localVideo.srcObject = localStream;
   stageVideo.srcObject = localStream;
-  NexaUI.setSelfVideo(true);
-  NexaUI.setStageActive(true);
+  GomliveUI.setSelfVideo(true);
+  GomliveUI.setStageActive(true);
   syncMediaControls();
 
   roomRef = db.ref(ROOM_PATH);
@@ -64,7 +66,8 @@ async function start() {
   await roomRef.child('active').set(true);
   roomRef.child('active').onDisconnect().remove();
   // Nombre del moderador visible para los espectadores
-  await roomRef.child('host').set({ name: NexaUI.getName() });
+  // (sharing indica a los espectadores si lo que ven es la pantalla compartida)
+  await roomRef.child('host').set({ name: GomliveUI.getName(), sharing: false });
   roomRef.child('host').onDisconnect().remove();
 
   viewersRef = roomRef.child('viewers');
@@ -103,7 +106,7 @@ async function handleNewViewer(viewerId) {
     calleeCandidatesRef: null
   };
   peers.set(viewerId, peerData);
-  NexaUI.setParticipantState(viewerId, 'connecting');
+  GomliveUI.setParticipantState(viewerId, 'connecting');
 
   // Agregar las pistas de audio/video locales para este espectador
   // (si se está compartiendo pantalla, el nuevo espectador recibe la pantalla en lugar de la cámara)
@@ -123,7 +126,7 @@ async function handleNewViewer(viewerId) {
   };
 
   pc.onconnectionstatechange = () => {
-    NexaUI.setParticipantState(viewerId, pc.connectionState);
+    GomliveUI.setParticipantState(viewerId, pc.connectionState);
     if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
       removeViewer(viewerId);
     }
@@ -220,8 +223,8 @@ async function stop() {
   }
   localVideo.srcObject = null;
   stageVideo.srcObject = null;
-  NexaUI.setSelfVideo(false);
-  NexaUI.setStageActive(false);
+  GomliveUI.setSelfVideo(false);
+  GomliveUI.setStageActive(false);
   syncMediaControls();
 
   // Limpiar la sala en Firebase
@@ -240,20 +243,20 @@ window.addEventListener('beforeunload', () => {
   }
 });
 
-// ---------- Controles de la interfaz NEXA LIVE ----------
+// ---------- Controles de la interfaz GOMLIVE ----------
 
 // Refleja en los botones el estado real de las pistas de audio/video.
 function syncMediaControls() {
   const audio = localStream ? localStream.getAudioTracks()[0] : null;
   const video = localStream ? localStream.getVideoTracks()[0] : null;
-  NexaUI.setControl('mic', { on: audio ? audio.enabled : true });
-  NexaUI.setControl('cam', { on: video ? video.enabled : true });
-  NexaUI.setControl('share', { on: !!screenTrack });
+  GomliveUI.setControl('mic', { on: audio ? audio.enabled : true });
+  GomliveUI.setControl('cam', { on: video ? video.enabled : true });
+  GomliveUI.setControl('share', { on: !!screenTrack });
 }
 
 function toggleTrack(kind) {
   if (!localStream) {
-    NexaUI.toast('Inicia la transmisión para usar este control.', 'warn');
+    GomliveUI.toast('Inicia la transmisión para usar este control.', 'warn');
     return;
   }
   const tracks = kind === 'audio' ? localStream.getAudioTracks() : localStream.getVideoTracks();
@@ -272,50 +275,81 @@ function replaceOutgoingVideo(track) {
   }
 }
 
+// Mensajes claros para los errores de getDisplayMedia
+const SCREEN_ERRORS = {
+  NotReadableError: 'El sistema no permitió leer la pantalla. Cierra otras apps que la estén capturando e inténtalo de nuevo.',
+  NotFoundError: 'No se encontró ninguna pantalla o ventana para compartir.',
+  AbortError: 'Se interrumpió la captura de pantalla.',
+  SecurityError: 'Compartir pantalla requiere abrir la página en localhost o https.'
+};
+
+// Avisa a los espectadores (rooms/gomlive/host/sharing) si lo que ven es la pantalla
+function publishSharing(sharing) {
+  if (roomRef) roomRef.child('host/sharing').set(sharing).catch(() => {});
+  GomliveUI.setScreenSharing(sharing);
+}
+
 async function toggleScreenShare() {
   if (screenTrack) {
     stopScreenShare();
     return;
   }
+  if (screenPending) return; // el selector ya está abierto
   if (!localStream) {
-    NexaUI.toast('Inicia la transmisión para compartir pantalla.', 'warn');
-    return;
-  }
-  if (!navigator.mediaDevices.getDisplayMedia) {
-    NexaUI.toast('Este navegador no permite compartir pantalla.', 'error');
+    GomliveUI.toast('Inicia la transmisión para compartir pantalla.', 'warn');
     return;
   }
 
-  let screenStream;
+  screenPending = true;
+  let captured;
   try {
-    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    captured = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
   } catch (err) {
-    if (err.name !== 'NotAllowedError') NexaUI.toast('No se pudo compartir pantalla: ' + err.message, 'error');
+    // NotAllowedError = el usuario canceló el selector: no es un error
+    if (err.name !== 'NotAllowedError') {
+      GomliveUI.toast(SCREEN_ERRORS[err.name] || 'No se pudo compartir pantalla: ' + err.message, 'error');
+    }
+    return;
+  } finally {
+    screenPending = false;
+  }
+
+  const track = captured.getVideoTracks()[0];
+  // La transmisión pudo detenerse mientras el selector estaba abierto
+  if (!localStream || !track) {
+    captured.getTracks().forEach((t) => t.stop());
     return;
   }
 
-  screenTrack = screenStream.getVideoTracks()[0];
+  screenStream = captured;
+  screenTrack = track;
+  // Prioriza la nitidez del texto (código, diapositivas) sobre la fluidez
+  if ('contentHint' in screenTrack) screenTrack.contentHint = 'detail';
   // Si el usuario usa el botón "Dejar de compartir" del navegador
   screenTrack.onended = stopScreenShare;
   replaceOutgoingVideo(screenTrack);
   stageVideo.srcObject = new MediaStream([screenTrack]);
+  publishSharing(true);
   syncMediaControls();
-  NexaUI.toast('Compartiendo pantalla con todos los espectadores.', 'ok');
+  GomliveUI.toast('Compartiendo pantalla con todos los espectadores.', 'ok');
 }
 
 function stopScreenShare() {
   if (!screenTrack) return;
   screenTrack.onended = null;
-  screenTrack.stop();
+  // Libera todas las pistas de la captura, no solo la de video
+  screenStream.getTracks().forEach((t) => t.stop());
+  screenStream = null;
   screenTrack = null;
   if (localStream) {
     replaceOutgoingVideo(localStream.getVideoTracks()[0]);
     stageVideo.srcObject = localStream;
   }
+  publishSharing(false);
   syncMediaControls();
 }
 
-NexaUI.init({
+GomliveUI.init({
   role: 'host',
   actions: {
     mic: () => toggleTrack('audio'),
@@ -327,6 +361,14 @@ NexaUI.init({
   }
 });
 syncMediaControls();
+
+// Navegadores sin getDisplayMedia (la mayoría de los móviles): el botón explica por qué no funciona
+if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+  GomliveUI.setControl('share', {
+    disabled: true,
+    reason: 'Este navegador no permite compartir pantalla. Usa Chrome o Edge en una computadora.'
+  });
+}
 
 startBtn.addEventListener('click', start);
 stopBtn.addEventListener('click', stop);

@@ -1,5 +1,5 @@
 /* =========================================================
-   NEXA LIVE — estilos compartidos (emisor y receptor)
+   GOMLIVE — estilos compartidos (emisor y receptor)
    ========================================================= */
 
 /* ---------- Temas (variables) ---------- */
@@ -577,6 +577,40 @@ a { color: inherit; }
 .round-btn:hover { border-color: rgba(var(--b-rgb), .5); background: rgba(var(--b-rgb), .1); }
 .round-btn.is-off { color: var(--danger); border-color: rgba(var(--danger-rgb), .5); background: rgba(var(--danger-rgb), .12); }
 
+/* Etiqueta "Pantalla compartida" (solo visible mientras se comparte) */
+.screen-pill { color: var(--a); border-color: rgba(var(--a-rgb), .45); }
+
+/* ---------- Reacciones en vivo (flotan sobre el video) ---------- */
+.reactions-layer {
+  position: absolute; inset: 0; z-index: 2;
+  overflow: hidden;
+  pointer-events: none; /* no bloquea los controles del video */
+}
+.reaction {
+  position: absolute; left: var(--x); bottom: 72px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  animation: reaction-float 2.6s ease-out forwards;
+  will-change: transform, opacity;
+}
+.reaction-emoji { font-size: 2.2rem; line-height: 1; }
+.reaction-name {
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-family: var(--font-mono); font-size: .66rem;
+  color: var(--text);
+  background: rgba(5, 8, 15, .6);
+  white-space: nowrap;
+}
+.reaction.is-own .reaction-name { color: #04140c; background: var(--a); }
+
+/* Solo transform y opacity: el navegador lo anima en la tarjeta gráfica */
+@keyframes reaction-float {
+  0%   { transform: translate(0, 0) scale(.6); opacity: 0; }
+  12%  { transform: translate(0, -16px) scale(1.15); opacity: 1; }
+  70%  { opacity: 1; }
+  100% { transform: translate(var(--drift), var(--rise)) scale(1); opacity: 0; }
+}
+
 /* ---------- Chat ---------- */
 .chat {
   position: relative;
@@ -817,8 +851,8 @@ a { color: inherit; }
   position: fixed; z-index: 60;
   min-width: 240px;
   padding: 12px;
-  border-radius: 16px;
-  background: var(--panel-2);
+  border-radius: var(--r-lg);
+  background: var(--bg-2); /* opaco: el contenido de atrás no se transparenta */
   border: 1px solid var(--line);
   box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
   animation: pop-in .18s var(--ease);
@@ -845,6 +879,23 @@ a { color: inherit; }
   transition: background .15s, transform .15s;
 }
 .emoji-btn:hover { background: rgba(var(--b-rgb), .12); transform: scale(1.12); }
+
+/* Fila de reacciones en el panel del botón Emojis */
+.reaction-row {
+  display: flex; gap: 6px;
+  margin-bottom: 12px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.reaction-btn {
+  flex: 1;
+  height: 44px;
+  border: 1px solid var(--line-soft); border-radius: var(--r-md);
+  background: rgba(255, 255, 255, .04);
+  font-size: 1.4rem;
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.reaction-btn:hover { background: rgba(var(--a-rgb), .12); border-color: rgba(var(--a-rgb), .45); }
+.reaction-btn:active { transform: scale(.9); }
 
 .dialog {
   width: min(440px, calc(100vw - 32px));
@@ -1048,8 +1099,14 @@ a { color: inherit; }
   .live-badge.is-live::before, .msg, .popover, .toast { animation: none; }
   /* El destello del chat se mantiene, pero sin fundido animado */
   .chat.flash::after { animation: chat-flash-calm .8s steps(1, end); }
+  /* Las reacciones aparecen y se desvanecen en su lugar, sin subir */
+  .reaction { animation: reaction-fade 2s ease-out forwards; }
 }
 @keyframes chat-flash-calm {
   0% { opacity: .8; box-shadow: none; }
+  100% { opacity: 0; }
+}
+@keyframes reaction-fade {
+  0%, 70% { opacity: 1; }
   100% { opacity: 0; }
 }
